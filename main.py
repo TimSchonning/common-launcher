@@ -8,7 +8,7 @@ from PIL import Image, ImageTk
 
 CONFIG_FILE = "games.json"
 IMAGES_DIR = "images"
-ICON_SIZE = (96, 96)
+ICON_SIZE = (220, 220)
 background_colour = "#1A1A1A"
 card_colour = "#313131"
 
@@ -39,9 +39,9 @@ class LauncherApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Game Launcher")
-        self.geometry("50x100")
+        self.geometry("1080x1920")
         self.attributes("-fullscreen", True)
-        self.configure(bg="#1e1e1e")
+        self.configure(bg=background_colour)
         ensure_dirs()
         self.config_data = load_config()
         self.icons_cache = {}
@@ -61,8 +61,8 @@ class LauncherApp(tk.Tk):
         self.canvas.create_window((0, 0), window=self.frame, anchor="nw")
         self.frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
-        exit_btn = tk.Button(self, text="Exit", command=self.destroy)
-        exit_btn.pack(side=tk.BOTTOM, pady=10)
+        exit_btn = tk.Button(self, text="Exit", font=("Segoe UI", 20, "bold"), command=self.destroy, pady=10, padx=20)
+        exit_btn.pack(side=tk.BOTTOM, pady=20, padx=20)
 
 
     def populate(self):
@@ -72,32 +72,91 @@ class LauncherApp(tk.Tk):
         q = self.search_var.get().strip().lower()
         filtered = [g for g in self.config_data if q in g.get("name", "").lower()]
 
-        cols = 4
+        # --- Determine screen width and scaling ---
+        screen_width = self.winfo_width() or 1080
+        cols = max(10, min(10, screen_width // 260))
+        base_card_width = screen_width / cols - 40
+        card_width = int(base_card_width)
+        card_height = int(card_width * 1.5)
+
+        # --- Scalable font sizes ---
+        name_font_size = max(24, int(card_width / 15))
+        desc_font_size = max(14, int(card_width / 22))
+        btn_font_size = max(14, int(card_width / 18))
+
         row = col = 0
+
         for g in filtered:
-            card = tk.Frame(self.frame, bd=0, relief=tk.RAISED, padx=30, pady=30, bg=card_colour,)
-            card.grid(row=row, column=col, padx=8, pady=8, sticky="n")
-            # Icon
+            card = tk.Frame(
+                self.frame,
+                width=card_width,
+                height=card_height,
+                bd=0,
+                relief=tk.RAISED,
+                padx=int(card_width * 0.2),
+                pady=int(card_height * 0.2),
+                bg=card_colour,
+            )
+            card.grid(row=row, column=col, padx=20, pady=20, sticky="n")
+            card.grid_propagate(False)
+
+            # --- Icon ---
             icon = self.get_icon_for_game(g)
             if icon:
                 lbl = tk.Label(card, image=icon, bg=card_colour, bd=0, highlightthickness=0)
                 lbl.image = icon
-                lbl.pack()
+                lbl.pack(padx=20, pady=(10, 15))
             else:
-                lbl = tk.Label(card, width=ICON_SIZE[0]//8, height=6, text="Bild saknas")
-                lbl.pack()
+                lbl = tk.Label(
+                    card,
+                    text="No Image",
+                    bg=card_colour,
+                    fg="white",
+                    width=int(card_width / 20),
+                    height=int(card_height / 100),
+                )
+                lbl.pack(padx=20, pady=(10, 15))
 
+            # --- Game name ---
             name = g.get("name", "Unnamed")
-            tk.Label(card, text=name, wraplength=120, font=("Segoe UI", 14, "bold"), bg=card_colour, fg="white").pack(pady=(10, 20))
-            btn_frame = tk.Frame(card)
-            btn_frame.pack(fill=tk.X)
-            launch_btn = tk.Button(btn_frame, text="Start", bg="#09ff68",command=lambda p=g["path"]: self.launch(p))
+            tk.Label(
+                card,
+                text=name,
+                wraplength=card_width - 40,
+                font=("Segoe UI", name_font_size, "bold"),
+                bg=card_colour,
+                fg="white",
+            ).pack(pady=(5, 5))
+
+            # --- Description ---
+            desc = g.get("desc", "")
+            tk.Label(
+                card,
+                text=desc,
+                wraplength=card_width - 40,
+                font=("Segoe UI", desc_font_size),
+                bg=card_colour,
+                fg="white",
+            ).pack(pady=(0, 10))
+
+            # --- Launch button ---
+            btn_frame = tk.Frame(card, bg=card_colour)
+            btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(10, 0))
+            launch_btn = tk.Button(
+                btn_frame,
+                text="Start",
+                fg="black",
+                font=("Segoe UI", btn_font_size, "bold"),
+                bg="#09ff68",
+                command=lambda p=g["path"]: self.launch(p),
+            )
             launch_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
             col += 1
             if col >= cols:
                 col = 0
                 row += 1
+
 
     def get_icon_for_game(self, game):
         img_path = game.get("image")
