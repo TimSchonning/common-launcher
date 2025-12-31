@@ -8,6 +8,8 @@ from PIL import Image, ImageTk
 
 CONFIG_FILE = "games.json"
 IMAGES_DIR = "images"
+CARD_WIDTH = 400
+CARD_HEIGHT = 600
 ICON_SIZE = (220, 220)
 background_colour = "#1A1A1A"
 card_colour = "#313131"
@@ -19,13 +21,16 @@ def load_config():
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def save_config(config):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
 
+
 def ensure_dirs():
     if not os.path.isdir(IMAGES_DIR):
         os.makedirs(IMAGES_DIR, exist_ok=True)
+
 
 def make_thumbnail(image_path):
     try:
@@ -34,6 +39,7 @@ def make_thumbnail(image_path):
         return ImageTk.PhotoImage(img)
     except Exception:
         return None
+
 
 class LauncherApp(tk.Tk):
     def __init__(self):
@@ -54,16 +60,40 @@ class LauncherApp(tk.Tk):
         self.margin_frame = tk.Frame(self, bg=background_colour)
         self.margin_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=50, pady=50)
 
-        self.canvas = tk.Canvas(self.margin_frame, bg=background_colour, highlightthickness=0, bd=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        # Scrollbar
+        self.scrollbar = tk.Scrollbar(self.margin_frame, orient="vertical")
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Canvas
+        self.canvas = tk.Canvas(
+            self.margin_frame,
+            bg=background_colour,
+            highlightthickness=0,
+            bd=0,
+            yscrollcommand=self.scrollbar.set
+        )
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.config(command=self.canvas.yview)
+
+        # Inner frame inside canvas
         self.frame = tk.Frame(self.canvas, bg=background_colour)
         self.canvas.create_window((0, 0), window=self.frame, anchor="nw")
-        self.frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
-        exit_btn = tk.Button(self, text="Exit", font=("Segoe UI", 20, "bold"), command=self.destroy, pady=10, padx=20)
+        # Update scrollregion automatically
+        self.frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        exit_btn = tk.Button(
+            self,
+            text="Exit",
+            font=("Segoe UI", 20, "bold"),
+            command=self.destroy,
+            pady=10,
+            padx=20
+        )
         exit_btn.pack(side=tk.BOTTOM, pady=20, padx=20)
-
 
     def populate(self):
         for w in self.frame.winfo_children():
@@ -72,81 +102,84 @@ class LauncherApp(tk.Tk):
         q = self.search_var.get().strip().lower()
         filtered = [g for g in self.config_data if q in g.get("name", "").lower()]
 
-        # --- Determine screen width and scaling ---
-        screen_width = self.winfo_width() or 1080
-        cols = max(10, min(10, screen_width // 260))
-        base_card_width = screen_width / cols - 40
-        card_width = int(base_card_width)
-        card_height = int(card_width * 1.5)
-
-        # --- Scalable font sizes ---
-        name_font_size = max(24, int(card_width / 15))
-        desc_font_size = max(14, int(card_width / 22))
-        btn_font_size = max(14, int(card_width / 18))
-
+        cols = 2  # Number of columns
         row = col = 0
 
         for g in filtered:
+            # OUTER CARD — fixed visible size
             card = tk.Frame(
                 self.frame,
-                width=card_width,
-                height=card_height,
-                bd=0,
-                relief=tk.RAISED,
-                padx=int(card_width * 0.2),
-                pady=int(card_height * 0.2),
+                width=CARD_WIDTH,
+                height=CARD_HEIGHT,
                 bg=card_colour,
+                bd=0,
+                relief=tk.RAISED
             )
             card.grid(row=row, column=col, padx=20, pady=20, sticky="n")
-            card.grid_propagate(False)
+            card.grid_propagate(False)  # Prevent card from resizing based on content
 
-            # --- Icon ---
+            # INNER PADDING FRAME — DOES NOT CHANGE CARD SIZE
+            inner = tk.Frame(card, bg=card_colour)
+            inner.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+            # Icon
             icon = self.get_icon_for_game(g)
             if icon:
-                lbl = tk.Label(card, image=icon, bg=card_colour, bd=0, highlightthickness=0)
+                lbl = tk.Label(inner, image=icon, bg=card_colour, bd=0, highlightthickness=0)
                 lbl.image = icon
-                lbl.pack(padx=20, pady=(10, 15))
+                lbl.pack(pady=(10, 15))
             else:
                 lbl = tk.Label(
-                    card,
+                    inner,
                     text="No Image",
                     bg=card_colour,
-                    fg="white",
-                    width=int(card_width / 20),
-                    height=int(card_height / 100),
+                    fg="white"
                 )
-                lbl.pack(padx=20, pady=(10, 15))
+                lbl.pack(pady=(10, 15))
 
-            # --- Game name ---
-            name = g.get("name", "Unnamed")
+            # Game name
             tk.Label(
-                card,
-                text=name,
-                wraplength=card_width - 40,
-                font=("Segoe UI", name_font_size, "bold"),
+                inner,
+                text=g.get("name", "Unnamed"),
+                wraplength=CARD_WIDTH - 40,
+                font=("Segoe UI", 24, "bold"),
                 bg=card_colour,
                 fg="white",
             ).pack(pady=(5, 5))
 
-            # --- Description ---
-            desc = g.get("desc", "")
-            tk.Label(
-                card,
-                text=desc,
-                wraplength=card_width - 40,
-                font=("Segoe UI", desc_font_size),
+            # Description / Category row
+            desc_row = tk.Frame(inner, bg=card_colour)
+            desc_row.pack(fill=tk.X, pady=(0, 10))
+
+            desc_label = tk.Label(
+                desc_row,
+                text=g.get("desc", ""),
+                wraplength=CARD_WIDTH - 140,
+                font=("Segoe UI", 14),
                 bg=card_colour,
                 fg="white",
-            ).pack(pady=(0, 10))
+                justify="left",
+            )
+            desc_label.pack(side=tk.LEFT, padx=10)
 
-            # --- Launch button ---
-            btn_frame = tk.Frame(card, bg=card_colour)
+            cat_label = tk.Label(
+                desc_row,
+                text=g.get("cat", "General"),
+                font=("Segoe UI", 14, "bold"),
+                bg=card_colour,
+                fg="#09ff68",
+            )
+            cat_label.pack(side=tk.RIGHT, padx=10)
+
+            # Button row
+            btn_frame = tk.Frame(inner, bg=card_colour)
             btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(10, 0))
+
             launch_btn = tk.Button(
                 btn_frame,
                 text="Start",
                 fg="black",
-                font=("Segoe UI", btn_font_size, "bold"),
+                font=("Segoe UI", 14, "bold"),
                 bg="#09ff68",
                 command=lambda p=g["path"]: self.launch(p),
             )
@@ -157,19 +190,21 @@ class LauncherApp(tk.Tk):
                 col = 0
                 row += 1
 
-
     def get_icon_for_game(self, game):
         img_path = game.get("image")
-        if img_path:
-            if not os.path.isabs(img_path):
-                img_path = os.path.join(IMAGES_DIR, img_path)
+        if img_path and not os.path.isabs(img_path):
+            img_path = os.path.join(IMAGES_DIR, img_path)
+
         if not img_path or not os.path.exists(img_path):
             return None
+
         if img_path in self.icons_cache:
             return self.icons_cache[img_path]
+
         thumb = make_thumbnail(img_path)
         if thumb:
             self.icons_cache[img_path] = thumb
+
         return thumb
 
     def launch(self, exe_path):
@@ -180,6 +215,7 @@ class LauncherApp(tk.Tk):
             subprocess.Popen([exe_path], cwd=os.path.dirname(exe_path))
         except Exception as e:
             messagebox.showerror("Launch failed", str(e))
+
 
 def main():
     if not os.path.exists(CONFIG_FILE):
